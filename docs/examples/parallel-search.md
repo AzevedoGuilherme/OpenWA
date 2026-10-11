@@ -6,8 +6,8 @@ Parallel's anonymous endpoint needs no account or API key; searches use Fast mod
 exploration and light use, with lower rate limits than authenticated access.
 
 This example adds a separate server to the client. OpenWA's `/api/search` continues to search stored
-WhatsApp messages. It does not send message history to Parallel automatically: only the queries and
-URLs supplied to Parallel's tools leave the client. Avoid including private chat content in queries.
+WhatsApp messages. It does not send message history to Parallel automatically. Parallel receives the tool inputs you
+supply, including queries, objectives and URLs. Avoid including private chat content in those inputs.
 
 ## Configure the client
 
