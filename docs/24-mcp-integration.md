@@ -260,6 +260,9 @@ needs, `VIEWER` for a read-only agent and `OPERATOR` at most, as
 From the client, list tools (you should see the curated set, or only read tools under
 `MCP_READONLY`) and call one (e.g. `SessionFindAll`) to confirm auth and execution.
 
+For optional web research alongside the OpenWA server, see
+[Parallel Search MCP example](examples/parallel-search.md), including a runnable search-and-fetch smoke check.
+
 ## 24.7 Extending — Adding a Tool
 
 A tool is a `ToolDescriptor`: a name, an agent-legible description, a Zod input schema, a
