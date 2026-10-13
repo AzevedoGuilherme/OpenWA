@@ -280,11 +280,9 @@ change will come from the engine libraries implementing the step.
 - The engine log then shows a `401` close with `Session disconnected: logged out`, the auth directory is cleared, and the session comes back at `qr_ready` with no phone
 - Linking the same account by QR works
 
-**Cause:** the pairing request carries the linked-device identity, and WhatsApp's pairing-code
-registration strictly validates companion operating system names. OpenWA defaults to `Ubuntu`
-out of the box so phone-number pairing succeeds. If `BAILEYS_BROWSER_NAME` has been overridden
-with a custom or non-standard brand, WhatsApp may reject the pairing code with "Couldn't link device".
-Reset or set `BAILEYS_BROWSER_NAME=Ubuntu` (or another standard OS name like `macOS` or `Windows`),
+**Cause:** the pairing request carries the linked-device identity, and some accounts reject a
+non-standard one. The default device name is `Ubuntu`; if `BAILEYS_BROWSER_NAME` is set to a custom
+brand, set it back to `Ubuntu` (or another standard OS name like `macOS` or `Windows`),
 restart OpenWA itself (the name is read at boot, so stopping and starting the session is not enough),
 and request a fresh code. The name applies to new pairings only; a session that is already linked
 keeps the name it was paired with until it is re-linked. See the phone-number pairing example in
