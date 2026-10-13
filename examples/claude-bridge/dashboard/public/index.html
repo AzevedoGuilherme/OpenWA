@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bridge · Configuración</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header><h1>Bridge WhatsApp · Configuración</h1></header>
+  <main>
+    <section id="view-list">
+      <div class="toolbar"><h2>Empresas</h2></div>
+      <div id="company-cards" class="cards"></div>
+      <form id="new-company" class="panel">
+        <h3>Nueva empresa</h3>
+        <div class="row">
+          <label>ID <small>minúsculas, números y guiones</small>
+            <input name="id" required pattern="[a-z0-9][a-z0-9\-]{0,39}" placeholder="mi-empresa"></label>
+          <label>Partir de
+            <select name="copyFrom"><option value="">Vacía (reglas por defecto)</option></select></label>
+        </div>
+        <button type="submit">Crear</button>
+        <p class="status" id="new-status"></p>
+      </form>
+    </section>
+
+    <section id="view-editor" hidden>
+      <div class="toolbar">
+        <button type="button" id="back" class="link">← Empresas</button>
+        <h2 id="editor-title"></h2>
+        <button type="button" id="delete" class="danger">Eliminar</button>
+      </div>
+      <nav class="tabs" id="tabs">
+        <button type="button" data-tab="negocio">Negocio</button>
+        <button type="button" data-tab="prompt">Prompt</button>
+        <button type="button" data-tab="mensajes">Mensajes</button>
+        <button type="button" data-tab="comportamiento">Comportamiento</button>
+        <button type="button" data-tab="homologacion">Homologación</button>
+        <button type="button" data-tab="produccion">Producción</button>
+      </nav>
+
+      <form id="editor" novalidate>
+        <fieldset data-panel="negocio">
+          <legend>Datos del negocio</legend>
+          <div class="row">
+            <label>Nombre <input data-path="business.name"></label>
+            <label>WhatsApp publicado <input data-path="business.whatsapp"></label>
+          </div>
+          <label>Actividad <input data-path="business.activity"></label>
+          <label>Presentación <small>Podés usar {{nombre}}; se reemplaza por el nombre.</small>
+            <textarea rows="2" data-path="business.intro"></textarea></label>
+          <label>Qué ofrece <textarea rows="2" data-path="business.offer"></textarea></label>
+          <div class="row">
+            <label>Eventos <small>Uno por línea.</small>
+              <textarea rows="6" data-path="business.events" data-type="list"></textarea></label>
+            <label>Servicios confirmados <small>Uno por línea.</small>
+              <textarea rows="6" data-path="business.services" data-type="list"></textarea></label>
+          </div>
+          <div class="row">
+            <label>Dirección <input data-path="business.address"></label>
+            <label>Correo <input type="email" data-path="business.email"></label>
+          </div>
+        </fieldset>
+
+        <fieldset data-panel="prompt" hidden>
+          <legend>Reglas y tono</legend>
+          <label>Reglas <small>Podés usar {{nombre}}. Los datos del negocio se agregan solos antes de las reglas.</small>
+            <textarea rows="22" class="code" data-path="prompt.rules"></textarea></label>
+          <div class="actions"><button type="button" class="secondary" id="preview-btn">Actualizar vista previa</button></div>
+          <p class="hint" id="preview-info"></p>
+          <label>Prompt final (solo lectura) <textarea rows="22" class="code" id="preview" readonly></textarea></label>
+        </fieldset>
+
+        <fieldset data-panel="mensajes" hidden>
+          <legend>Mensajes fijos</legend>
+          <label>Si Claude no responde <textarea rows="2" data-path="messages.fallback"></textarea></label>
+          <label>Respuesta a un pedido de baja <textarea rows="2" data-path="messages.optOutReply"></textarea></label>
+          <label>Frase de derivación <small>Cuando la respuesta la contiene, el bridge registra [handoff].</small>
+            <input data-path="messages.handoffPhrase"></label>
+        </fieldset>
+
+        <fieldset data-panel="comportamiento" hidden>
+          <legend>Comportamiento del bridge</legend>
+          <div class="row">
+            <label>Modelo <input data-path="bridge.model"></label>
+            <label>Máx. tokens <input type="number" data-path="bridge.maxTokens" data-type="number"></label>
+            <label>Mensajes de historial <input type="number" data-path="bridge.historyLimit" data-type="number"></label>
+          </div>
+          <div class="row">
+            <label>Demora mínima (ms) <input type="number" data-path="bridge.delayMinMs" data-type="number"></label>
+            <label>Demora máxima (ms) <input type="number" data-path="bridge.delayMaxMs" data-type="number"></label>
+            <label>Intervalo por chat (ms) <input type="number" data-path="bridge.chatMinIntervalMs" data-type="number"></label>
+          </div>
+          <div class="row">
+            <label>Zona horaria <input data-path="bridge.timeZone"></label>
+            <label>Pausa nocturna desde (h) <input type="number" data-path="bridge.nightPauseStart" data-type="number"></label>
+            <label>hasta (h) <input type="number" data-path="bridge.nightPauseEnd" data-type="number"></label>
+          </div>
+          <p class="hint">La pausa nocturna solo frena mensajes proactivos; las respuestas a clientes salen igual.</p>
+        </fieldset>
+
+        <fieldset data-panel="homologacion" hidden>
+          <legend>Homologación (local)</legend>
+          <div class="row">
+            <label>URL de OpenWA <input data-path="environments.homologacion.openwaUrl"></label>
+            <label>Puerto del bridge <input type="number" data-path="environments.homologacion.port" data-type="number"></label>
+          </div>
+          <label>URL del webhook <small>Con OpenWA en Docker: http://host.docker.internal:&lt;puerto&gt;/webhook</small>
+            <input data-path="environments.homologacion.webhookUrl"></label>
+          <label>Sesión de WhatsApp <select data-path="environments.homologacion.sessionId"></select></label>
+          <h3>Claves <small class="hint">(se guardan solo en companies/&lt;id&gt;/.env.homologacion; vacío = no cambiar)</small></h3>
+          <label>ANTHROPIC_API_KEY <input type="password" autocomplete="off" data-secret="ANTHROPIC_API_KEY"></label>
+          <label>OPENWA_API_KEY <input type="password" autocomplete="off" data-secret="OPENWA_API_KEY"></label>
+          <label>OPENWA_WEBHOOK_SECRET <input type="password" autocomplete="off" data-secret="OPENWA_WEBHOOK_SECRET"></label>
+          <div class="actions">
+            <button type="button" class="secondary" id="reveal">Ver claves</button>
+            <button type="button" class="secondary" id="load-sessions">Probar conexión y cargar sesiones</button>
+            <button type="button" class="secondary" id="register-webhook">Registrar webhook</button>
+            <button type="button" class="secondary" id="send-test">Enviar evento de prueba</button>
+          </div>
+          <p class="hint">Las acciones usan la configuración guardada.</p>
+          <pre class="result" id="homolog-result"></pre>
+        </fieldset>
+
+        <fieldset data-panel="produccion" hidden>
+          <legend>Producción (VPS con Docker)</legend>
+          <div class="row">
+            <label>URL de OpenWA <input data-path="environments.produccion.openwaUrl"></label>
+            <label>ID de sesión <input data-path="environments.produccion.sessionId"></label>
+            <label>Puerto del bridge <input type="number" data-path="environments.produccion.port" data-type="number"></label>
+          </div>
+          <label>URL del webhook <input data-path="environments.produccion.webhookUrl"></label>
+          <p class="hint">Las claves de producción no se guardan acá: el paquete trae un .env vacío que se completa en el servidor.</p>
+          <div class="actions"><button type="button" id="export">Exportar a producción</button></div>
+          <pre class="result" id="prod-result"></pre>
+        </fieldset>
+      </form>
+
+      <footer class="savebar">
+        <span class="status" id="save-status"></span>
+        <button type="submit" form="editor">Guardar</button>
+      </footer>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
