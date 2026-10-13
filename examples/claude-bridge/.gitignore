@@ -2,3 +2,6 @@
 node_modules/
 *.log
 data/
+dist/
+companies/*/.env.*
+companies/.trash/

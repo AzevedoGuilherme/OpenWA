@@ -29,3 +29,11 @@ OpenWA usa una integración no oficial de WhatsApp. Nada de lo que hace este bri
 - Revisá reportes, bloqueos y bajas con frecuencia.
 - Subí el volumen solo cuando haya actividad legítima que lo justifique.
 - OpenWA trae un límite diario progresivo opcional (`SEND_PACING_*`, apagado por defecto). Este bridge no lo activa ni agrega uno propio.
+
+## Varias empresas y dashboard
+
+- `npm run dashboard` abre la configuración en http://127.0.0.1:3100 (solo desde esta PC). Cada empresa vive en `companies/<id>/company.json`; las claves de homologación, en `companies/<id>/.env.homologacion` (fuera de git).
+- Probar una empresa en homologación: `npm run dev -- --company <id> --env homologacion`. Sin argumentos, `npm start`/`npm run dev` siguen levantando rocaBianca con el `.env` de esta carpeta.
+- Cada empresa usa su puerto de homologación y guarda sus bajas en `data/<id>/optouts.json`.
+- **Exportar a producción** genera `dist/<id>/` (Dockerfile, docker-compose, `company.json`, `.env` con las claves vacías y `DEPLOY.md` con los pasos). Las claves de producción no se guardan en el dashboard.
+- `npm test` corre las pruebas (`node:test`).
