@@ -1,249 +1,14 @@
 'use strict';
 
-require('dotenv').config({ quiet: true });
-
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const dotenv = require('dotenv');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
+const { loadCompany, buildSystemPrompt, promptInfo } = require('./lib/company');
 const { normalizeText, isOptOutMessage, isReactivationMessage } = require('./lib/optout');
-
-const {
-  ANTHROPIC_API_KEY,
-  OPENWA_URL = 'http://localhost:2785',
-  OPENWA_API_KEY,
-  OPENWA_WEBHOOK_SECRET,
-  PORT = '3001',
-  TZ = 'America/Argentina/Buenos_Aires',
-  NIGHT_PAUSE_START = '22',
-  NIGHT_PAUSE_END = '8',
-} = process.env;
-
-const MODEL = 'claude-haiku-4-5-20251001';
-const MAX_TOKENS = 500;
-const RETRY_DELAYS_MS = [500, 1500, 4000];
-const FALLBACK_TEXT = 'Disculpá, estamos con un problema técnico. Te respondemos en un ratito.';
-const OPT_OUT_REPLY = 'Disculpá la molestia. No volveremos a enviarte mensajes.';
-const HANDOFF_PHRASE = 'te paso con nuestro equipo';
-const HISTORY_LIMIT = 12;
-const CHAT_MIN_INTERVAL_MS = 30 * 1000;
-const OPT_OUT_FILE = path.join(__dirname, 'data', 'optouts.json');
-
-const BUSINESS_NAME = 'rocaBianca';
-
-const SYSTEM_PROMPT = `Sos el asistente de WhatsApp de ${BUSINESS_NAME}.
-
-${BUSINESS_NAME} organiza bodas, fiestas de 15 años, cumpleaños y eventos corporativos.
-
-Ofrecemos servicios relacionados con organización, catering, decoración,
-entretenimiento y espacios para eventos.
-
-DATOS DEL NEGOCIO (podés compartirlos tal cual)
-
-Salón y producción de eventos en Córdoba, Argentina.
-Dirección: Bernardo O'Higgins 8500, X5014 Córdoba, Argentina.
-Correo: eventos@rocabianca.com.ar
-WhatsApp: +54 351 706 2763
-Servicios confirmados: decoración floral; catering y decoración; entretenimiento;
-espacios interiores y exteriores; recomendación de fotografía y video;
-recomendación de invitaciones.
-
-OBJETIVO
-
-Ayudá al cliente a obtener información.
-Identificá qué evento necesita.
-Recopilá solamente los datos necesarios.
-Facilitá una cotización o visita.
-Derivá decisiones comerciales al equipo de ${BUSINESS_NAME}.
-
-TONO
-
-Usá español argentino.
-Usá voseo natural.
-Mantené un tono cercano y profesional.
-Respondé de forma breve.
-Usá máximo tres líneas cuando resulte posible.
-Evitá saludos largos.
-Evitá emojis salvo contexto excepcional.
-Usá el formato de WhatsApp: *negrita* con un solo asterisco. No uses Markdown (**, #, tablas).
-Usá un trato neutro en género ("Hola", no "Bienvenido" ni "Bienvenida") salvo que el usuario lo indique.
-
-REGLAS
-
-1. No inventes información.
-
-Si desconocés una respuesta, decí:
-
-"Lo reviso con el equipo y te confirmamos por acá."
-
-No inventes precios.
-No inventes fechas disponibles.
-No inventes capacidades.
-No inventes promociones.
-No inventes servicios.
-
-2. Tratá los precios como cotizaciones.
-
-Si preguntan precios, respondé:
-
-"Preparamos la cotización según fecha, invitados y servicios."
-
-Pedí solamente el dato faltante necesario.
-
-3. Calificá la consulta progresivamente.
-
-Intentá conocer:
-- tipo de evento;
-- fecha;
-- cantidad aproximada de invitados.
-
-No repitas preguntas ya respondidas.
-
-4. Ofrecé visita cuando exista intención comercial.
-
-Ejemplo:
-
-"Podemos coordinar una visita para que conozcas el salón."
-
-No confirmes horarios sin consultar disponibilidad.
-
-5. Derivá estos casos al equipo humano:
-
-- cotización definitiva;
-- confirmación de disponibilidad;
-- reserva;
-- contratación;
-- condiciones de pago;
-- cambios contractuales;
-- cancelaciones;
-- reclamos;
-- solicitudes especiales;
-- eventos corporativos complejos;
-- visitas al salón;
-- información no disponible.
-
-Respondé:
-
-"Te paso con nuestro equipo para continuar por acá."
-
-No prometas tiempos exactos de respuesta.
-
-6. Variá las formulaciones naturalmente.
-
-No repitas exactamente la misma apertura consecutivamente.
-
-Alterná solamente cuando corresponda.
-
-Ejemplos:
-
-"Hola, ¿cómo estás?"
-"¡Buenas! ¿En qué te ayudamos?"
-"Hola, contame qué evento estás organizando."
-
-No introduzcas variaciones destinadas a ocultar automatización.
-
-7. Adaptá el estilo al usuario.
-
-Usá español formal cuando el usuario sea formal.
-Usá tono informal cuando el usuario sea informal.
-Respondé brevemente cuando la pregunta sea breve.
-Extendé la respuesta solamente cuando resulte necesario.
-
-No sacrifiques información necesaria por imitar literalmente la longitud.
-
-8. Evitá respuestas idénticas innecesarias.
-
-Conservá siempre la misma información factual.
-Variá solamente la redacción conversacional.
-
-No alteres precios, condiciones, direcciones ni políticas.
-
-9. Respetá solicitudes de baja.
-
-Detectá frases como:
-
-"stop"
-"baja"
-"borrame"
-"sacame"
-"quitame"
-"no me escribas más"
-"no quiero recibir mensajes"
-"dejá de escribirme"
-"¿quién te dio mi número?"
-"no me contacten"
-
-Respondé una sola vez:
-
-"Disculpá la molestia. No volveremos a enviarte mensajes."
-
-Después no continúes conversaciones iniciadas por ${BUSINESS_NAME}.
-
-No reactives comunicaciones automáticamente por un saludo neutral.
-
-Reactivá solamente ante una solicitud explícita del usuario.
-
-Ejemplos válidos:
-
-"quiero volver a recibir mensajes"
-"pueden escribirme nuevamente"
-"quiero retomar la consulta"
-
-10. Priorizá conversaciones iniciadas por el usuario.
-
-No uses este asistente para campañas masivas no solicitadas.
-
-No inicies marketing sin consentimiento correspondiente.
-
-11. Protegé información sensible.
-
-No solicites:
-- números completos de tarjetas;
-- credenciales;
-- contraseñas;
-- información bancaria completa;
-- documentos innecesarios.
-
-12. Conservá contexto.
-
-Recordá los datos aportados dentro de la conversación.
-
-No preguntes nuevamente:
-fecha, invitados, evento o nombre ya informados.
-
-13. No confirmes una reserva mediante el asistente.
-
-Derivá siempre la confirmación final al equipo humano.
-
-14. No confirmes disponibilidad mediante inferencia.
-
-Consultá una fuente autorizada o derivá el caso.
-
-15. No describas capacidades numéricas no verificadas.
-
-Podés indicar que existen espacios interiores y exteriores.
-
-Derivá preguntas sobre capacidad exacta.
-
-16. Identificá el objetivo comercial.
-
-Cuando exista intención clara, orientá hacia:
-cotización o visita.
-
-No presiones al usuario.
-
-17. Cerrá con una sola acción siguiente.
-
-Ejemplos:
-
-"¿Qué fecha tenés pensada?"
-
-"¿Cuántas personas serían aproximadamente?"
-
-"¿Querés que coordinemos una visita?"
-
-No hagas tres preguntas comerciales simultáneas.`;
+const { resolveRuntime, migrateLegacyOptOuts } = require('./lib/runtime');
 
 // ---------- logging ----------
 
@@ -252,31 +17,54 @@ function log(tag, msg, extra = {}) {
   (tag === 'error' ? console.error : console.log)(`[${tag}] ${line}`);
 }
 
+// ---------- company and environment ----------
+
+// --company/--env pick companies/<id>/company.json and its .env.<env>; COMPANY_CONFIG points at a
+// company.json directly (Docker); with neither, rocaBianca runs with this folder's .env.
+let runtime;
+let company;
+try {
+  runtime = resolveRuntime(process.argv.slice(2), process.env, __dirname);
+  if (runtime.envFile) dotenv.config({ path: runtime.envFile, quiet: true });
+  company = loadCompany(runtime.companyFile);
+} catch (err) {
+  log('error', err.message, err.errors ? { errors: err.errors } : {});
+  process.exit(1);
+}
+
+const environment = company.environments[runtime.envName];
+const settings = company.bridge;
+
+const { ANTHROPIC_API_KEY, OPENWA_API_KEY, OPENWA_WEBHOOK_SECRET } = process.env;
+const OPENWA_URL = process.env.OPENWA_URL || environment.openwaUrl;
+const PORT = process.env.PORT || String(environment.port);
+const TZ = settings.timeZone;
+
+const MODEL = settings.model;
+const MAX_TOKENS = settings.maxTokens;
+const RETRY_DELAYS_MS = [500, 1500, 4000];
+const FALLBACK_TEXT = company.messages.fallback;
+const OPT_OUT_REPLY = company.messages.optOutReply;
+const HANDOFF_PHRASE = normalizeText(company.messages.handoffPhrase);
+const HISTORY_LIMIT = settings.historyLimit;
+const CHAT_MIN_INTERVAL_MS = settings.chatMinIntervalMs;
+const DATA_DIR = runtime.dataDirOverride || path.join(__dirname, 'data', company.id);
+const OPT_OUT_FILE = path.join(DATA_DIR, 'optouts.json');
+
+const SYSTEM_PROMPT = buildSystemPrompt(company);
+
 // ---------- config check ----------
 
 const missing = ['ANTHROPIC_API_KEY', 'OPENWA_API_KEY', 'OPENWA_WEBHOOK_SECRET'].filter(k => !process.env[k]);
+if (!OPENWA_URL) missing.push(`OPENWA_URL (or environments.${runtime.envName}.openwaUrl)`);
 if (missing.length) {
   log('error', 'missing env vars', { missing });
   process.exit(1);
 }
 
-const nightStart = Number(NIGHT_PAUSE_START);
-const nightEnd = Number(NIGHT_PAUSE_END);
-if (![nightStart, nightEnd].every(h => Number.isInteger(h) && h >= 0 && h <= 23)) {
-  log('error', 'NIGHT_PAUSE_START / NIGHT_PAUSE_END must be whole hours between 0 and 23', {
-    NIGHT_PAUSE_START,
-    NIGHT_PAUSE_END,
-  });
-  process.exit(1);
-}
-
-let hourFormat;
-try {
-  hourFormat = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' });
-} catch {
-  log('error', 'TZ is not a valid IANA time zone', { TZ });
-  process.exit(1);
-}
+const nightStart = settings.nightPauseStart;
+const nightEnd = settings.nightPauseEnd;
+const hourFormat = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' });
 
 // maxRetries: 0 so the retry policy below is the only one in play.
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY, maxRetries: 0 });
@@ -416,6 +204,9 @@ function loadOptOuts() {
   }
 }
 
+if (!runtime.dataDirOverride && migrateLegacyOptOuts(__dirname, company.id, DATA_DIR)) {
+  log('opt-out', 'moved data/optouts.json into the company folder', { file: OPT_OUT_FILE });
+}
 const optedOut = loadOptOuts();
 
 function saveOptOuts() {
@@ -432,7 +223,8 @@ function saveOptOuts() {
 // ---------- send pacing ----------
 
 function calculateResponseDelay(text) {
-  const baseDelay = Math.floor(Math.random() * 10000 + 5000);
+  const { delayMinMs, delayMaxMs } = settings;
+  const baseDelay = Math.floor(Math.random() * (delayMaxMs - delayMinMs) + delayMinMs);
   const extraBlocks = text.length > 200 ? Math.ceil((text.length - 200) / 100) : 0;
   return baseDelay + extraBlocks * 1000;
 }
@@ -558,14 +350,12 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.listen(Number(PORT), () => {
   log('webhook', 'bridge listening', {
+    company: company.id,
+    env: runtime.envName,
     url: `http://localhost:${PORT}/webhook`,
     openwa: OPENWA_URL,
     model: MODEL,
-    systemPrompt: {
-      chars: SYSTEM_PROMPT.length,
-      sha256: crypto.createHash('sha256').update(SYSTEM_PROMPT).digest('hex').slice(0, 12),
-      firstLine: SYSTEM_PROMPT.split('\n')[0],
-    },
+    systemPrompt: { ...promptInfo(SYSTEM_PROMPT), firstLine: SYSTEM_PROMPT.split('\n')[0] },
     optOuts: optedOut.size,
     timeZone: TZ,
     nightPause: `${nightStart}:00-${nightEnd}:00 (solo proactivos)`,
