@@ -6,7 +6,8 @@
   "main": "bridge.js",
   "scripts": {
     "dev": "node --watch bridge.js",
-    "start": "node bridge.js"
+    "start": "node bridge.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=18.11"
