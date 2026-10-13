@@ -1,0 +1,2 @@
+# The prompt fixture and default rules are compared byte for byte; keep them LF on every checkout.
+*.txt text eol=lf
