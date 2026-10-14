@@ -6,7 +6,7 @@ import {
   type EditedMessage,
 } from '../interfaces/whatsapp-engine.interface';
 import { type SerializedWid } from '../types/whatsapp-web-js.types';
-import { buildEditedMessage, buildIncomingMessageBase, mapContactFields } from './message-mapper';
+import { buildEditedMessage, buildIncomingMessageBase, mapContactFields, mapWwebjsMessageType } from './message-mapper';
 import { extractWwebjsCall, wwebjsAckToDeliveryStatus } from './wwebjs-messaging';
 import { type WwebjsEngineHost } from './wwebjs-host';
 
@@ -17,9 +17,31 @@ import { type WwebjsEngineHost } from './wwebjs-host';
  * auth_failure) stay in the lifecycle module (./wwebjs-lifecycle) — they drive the lifecycle
  * latches this file never touches.
  */
+// WhatsApp emits encryption/session notices through the message event too.
+// They are not customer content and must never trigger storage or automation.
+function isNonContentMessage(msg: { type: string; body?: string; hasMedia: boolean }): boolean {
+  if (['e2e_notification', 'ciphertext'].includes(msg.type)) return true;
+  return mapWwebjsMessageType(msg.type) === 'unknown' && !msg.body?.trim() && !msg.hasMedia;
+}
+
+async function boundedContact<T>(read: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(read),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('contact_lookup_timeout')), 1500);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function registerWwebjsMessageEvents(client: Client, host: WwebjsEngineHost): void {
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   client.on('message', async msg => {
+    if (isNonContentMessage(msg)) return;
     try {
       const incomingMessage: IncomingMessage = buildIncomingMessageBase(msg);
 
@@ -27,7 +49,7 @@ export function registerWwebjsMessageEvents(client: Client, host: WwebjsEngineHo
       // in 1:1); we read only its synchronous fields and never the async getters (profile pic, about),
       // which would hit WhatsApp on every message.
       try {
-        const contact = await msg.getContact();
+        const contact = await boundedContact(() => msg.getContact());
         if (contact) {
           // Off by default the payload keeps { name, pushName }; WEBHOOK_CONTACT_DETAILS opts into the
           // full set. Merge over the base so the notifyName pushName isn't lost, and skip an empty
@@ -88,6 +110,7 @@ export function registerWwebjsMessageEvents(client: Client, host: WwebjsEngineHo
   });
 
   client.on('message_create', msg => {
+    if (isNonContentMessage(msg)) return;
     // `message_create` fires for every message the account creates — including ones composed on a
     // linked phone, which the `message` event above never delivers. Incoming messages are already
     // handled there, so forward only the account's own outgoing (`fromMe`) messages; this is the
