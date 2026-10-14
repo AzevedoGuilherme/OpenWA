@@ -3,6 +3,7 @@ import { createLogger } from '../../common/services/logger.service';
 import { ConcurrencyLimiter } from '../../common/utils/concurrency-limiter';
 import { inboundMediaConcurrency } from './inbound-media-cap';
 import type { WAMessage, WASocket } from '@whiskeysockets/baileys';
+import type { Contact, EventResponseEvent } from '../interfaces/whatsapp-engine.interface';
 
 /**
  * `downloadMediaMessage` is a jest mock, not a silent no-op: the real-download branch
@@ -119,6 +120,7 @@ function makeHost(overrides: Partial<BaileysEventsHost> = {}): BaileysEventsHost
     getOnMessageAck: () => undefined,
     getOnGroupEvent: () => undefined,
     getOnEventResponse: () => undefined,
+    findContact: () => null,
     getOnCall: () => undefined,
     getOnPresenceUpdate: () => undefined,
     getOnCallOutcome: () => undefined,
@@ -712,6 +714,53 @@ describe('BaileysEvents event RSVPs (event.response)', () => {
     expect(onEventResponse).toHaveBeenCalledWith(
       expect.objectContaining({ chatId: chat, responderId: '6280000000000@s.whatsapp.net', fromMe: true }),
     );
+  });
+
+  it("takes a guest's 1:1 answer to the account's own event from the RSVP, not the guest's view of the event", async () => {
+    const onEventResponse = jest.fn();
+    const events = new BaileysEvents(makeHost({ getOnEventResponse: () => onEventResponse }));
+    const guest = '6282222222222@s.whatsapp.net';
+
+    // Baileys passes the creation key on as the guest sent it: its remoteJid is this account.
+    events.handleMessagesUpdate([
+      {
+        key: { id: 'EVT3', remoteJid: '6280000000000@s.whatsapp.net', fromMe: false },
+        update: {
+          eventResponses: [rsvp({ eventResponseMessageKey: { id: 'RSVP3', remoteJid: guest, fromMe: false } })],
+        },
+      },
+    ] as never);
+    await flush();
+
+    expect(onEventResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ eventMessageId: 'EVT3', chatId: guest, responderId: guest, fromMe: false }),
+    );
+  });
+
+  it("names the responder from the session's contact store", async () => {
+    const onEventResponse = jest.fn();
+    const findContact = jest.fn((id: string) =>
+      id === '6281111111111@s.whatsapp.net' ? ({ id, name: 'Ana Pérez', pushName: 'Ana' } as Contact) : null,
+    );
+    const events = new BaileysEvents(makeHost({ getOnEventResponse: () => onEventResponse, findContact }));
+
+    events.handleMessagesUpdate([
+      { key: eventKey, update: { eventResponses: [rsvp()] } },
+      {
+        key: eventKey,
+        update: {
+          eventResponses: [
+            rsvp({ eventResponseMessageKey: { id: 'RSVP4', remoteJid: group, participant: '628999@s.whatsapp.net' } }),
+          ],
+        },
+      },
+    ] as never);
+    await flush();
+
+    const byId = (id: string) =>
+      (onEventResponse.mock.calls as EventResponseEvent[][]).map(([e]) => e).find(e => e.responseMessageId === id);
+    expect(byId('RSVP1')?.contact).toEqual({ name: 'Ana Pérez', pushName: 'Ana' });
+    expect(byId('RSVP4')).not.toHaveProperty('contact');
   });
 
   it('still reports the RSVP, without a name, when the store cannot be read', async () => {

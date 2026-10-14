@@ -658,7 +658,8 @@ export type EventResponseKind = 'going' | 'not_going' | 'maybe' | 'unknown';
  * One RSVP to a WhatsApp event (the calendar-style event created from the attach menu). WhatsApp
  * encrypts each RSVP with a key derived from the event creation message's `messageSecret`, so an
  * engine can only report the answers to events whose creation message it holds. A guest who changes
- * their answer produces a new RSVP; the latest one per `responderId` is the current state.
+ * their answer produces a new RSVP; the one with the latest `timestamp` per `responderId` is the
+ * current state.
  */
 export interface EventResponseEvent {
   /** Id of the event creation message the RSVP answers. */
@@ -667,6 +668,8 @@ export interface EventResponseEvent {
   chatId: string;
   /** Neutral id of the guest who answered (the account itself when it answered from its phone). */
   responderId: string;
+  /** The responder's saved name and profile name, when the session knows either. */
+  contact?: { name?: string; pushName?: string };
   /** True when the account itself answered (from its phone). */
   fromMe: boolean;
   response: EventResponseKind;

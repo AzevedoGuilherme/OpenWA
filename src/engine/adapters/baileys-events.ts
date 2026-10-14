@@ -1,6 +1,7 @@
 import type * as BaileysLib from '@whiskeysockets/baileys';
 import type { WACallEvent, WAMessage, WAMessageKey, WASocket } from '@whiskeysockets/baileys';
 import {
+  Contact,
   EditedMessage,
   EngineEventCallbacks,
   EventResponseEvent,
@@ -240,6 +241,8 @@ export interface BaileysEventsHost {
   getOnGroupEvent(): EngineEventCallbacks['onGroupEvent'];
   /** The currently-registered onEventResponse callback, if any (assigned at initialize()). */
   getOnEventResponse(): EngineEventCallbacks['onEventResponse'];
+  /** A contact from the session's own store, by any id dialect; no network read. */
+  findContact(contactId: string): Contact | null;
   /** The currently-registered onCall callback, if any (assigned at initialize()). */
   getOnCall(): EngineEventCallbacks['onCall'];
   /** The currently-registered onPresenceUpdate callback, if any (assigned at initialize()). */
@@ -931,14 +934,16 @@ export class BaileysEvents {
     const envelope = rsvp.eventResponseMessageKey;
     if (!callback || !eventKey?.id || !eventKey.remoteJid || !envelope?.id) return;
     const fromMe = envelope.fromMe === true;
+    // The creation key is the guest's view of the event (in a 1:1 chat its remoteJid is this
+    // account), so the chat comes from the RSVP's own key, which Baileys has put on our side.
+    const chatJid = envelope.remoteJid ?? eventKey.remoteJid;
     // Same rule as a reaction: a 1:1 key names the chat partner, so the account's own answer is
     // attributed to the account; group keys carry the responder as `participant`.
-    const responder =
-      envelope.participant ?? (fromMe ? this.host.normalizedSelfJid() : (envelope.remoteJid ?? eventKey.remoteJid));
+    const responder = envelope.participant ?? (fromMe ? this.host.normalizedSelfJid() : chatJid);
     if (!responder) return;
     const event: EventResponseEvent = {
       eventMessageId: eventKey.id,
-      chatId: this.host.toNeutralJid(eventKey.remoteJid),
+      chatId: this.host.toNeutralJid(chatJid),
       responderId: this.host.toNeutralJid(responder),
       fromMe,
       response: mapBaileysEventResponseType(rsvp.response?.response),
@@ -950,6 +955,15 @@ export class BaileysEvents {
     };
     const guests = rsvp.response?.extraGuestCount;
     if (typeof guests === 'number' && Number.isFinite(guests)) event.extraGuestCount = guests;
+    // Named from the session's own contact store, like the sender of message.received, so an
+    // attendance list can be built from the RSVPs alone without a network read per answer.
+    const known = this.host.findContact(responder);
+    if (known?.name || known?.pushName) {
+      event.contact = {
+        ...(known.name ? { name: known.name } : {}),
+        ...(known.pushName ? { pushName: known.pushName } : {}),
+      };
+    }
     const stored = await this.readStoredMessage(eventKey.id, 'reading the event an RSVP answers');
     if (stored?.message) {
       const b = await this.host.loadLib();
