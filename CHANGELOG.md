@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add optional 24-hour idempotency keys to twelve single-recipient send routes.
 - Add opt-in archive-only chat media with dashboard previews.
 - Report RSVPs to WhatsApp events as an `event.response` webhook and WebSocket event on Baileys (#1788, thanks @jelasus).
+- Add Number Checker page in dashboard for single and bulk WhatsApp recipient pre-validation.
 
 ### Changed
 
